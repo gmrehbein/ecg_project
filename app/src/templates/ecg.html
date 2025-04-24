@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Real-Time 6-Lead ECG</title>
+  <!-- Local CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='ecg.css') }}">
+</head>
+<body>
+  <h1>ECG Monitor</h1>
+
+  <div id="bpm-box">
+    ❤️ Heart Rate: <span id="bpm-value">--</span> BPM
+  </div>
+
+  <div class="charts">
+    {% for lead in ['I', 'II', 'III', 'aVR', 'aVL', 'aVF'] %}
+    <div class="chart-block">
+      <div class="readout">
+        <div><strong>{{ lead }}:</strong> <span id="val-{{ lead }}">--</span> mV</div>
+        <div class="readout-stats">
+          Min: <span id="min-{{ lead }}">--</span> |
+          Max: <span id="max-{{ lead }}">--</span> |
+          Avg: <span id="avg-{{ lead }}">--</span>
+        </div>
+      </div>
+      <canvas id="lead{{ lead }}"></canvas>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Local JS assets -->
+<!-- 1. Chart.js core -->
+<script src="{{ url_for('static', filename='js/chart.min.js') }}"></script>
+
+<!-- 2. Luxon core -->
+<script src="{{ url_for('static', filename='js/luxon.min.js') }}"></script>
+
+<!-- 3. Chart.js Luxon adapter -->
+<script src="{{ url_for('static', filename='js/chartjs-adapter-luxon.umd.min.js') }}"></script>
+
+<!-- 4. Streaming plugin -->
+<script src="{{ url_for('static', filename='js/chartjs-plugin-streaming.min.js') }}"></script>
+
+<!-- 5. ECG app -->
+<script src="{{ url_for('static', filename='ecg.js') }}"></script>
+
+</body>
+</html>

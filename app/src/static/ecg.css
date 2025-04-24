@@ -1,0 +1,56 @@
+body {
+  background-color: #121212;
+  color: #eee;
+  font-family: sans-serif;
+}
+
+h1 {
+  text-align: center;
+}
+
+#bpm-box {
+  text-align: center;
+  font-size: 2rem;
+  margin-top: -10px;
+  margin-bottom: 10px;
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+  padding: 10px 20px;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 10px;
+  color: lime;
+  font-weight: bold;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 20px;
+}
+
+.chart-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.readout {
+  color: #0f0;
+  margin-bottom: 4px;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.readout-stats {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+canvas {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+  padding: 10px;
+}

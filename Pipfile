@@ -1,0 +1,29 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+neurokit2 = "*"
+config = "*"
+flask = "*"
+flask-cors = "*"
+toml = "*"
+msgpack = "*"
+msgpack-numpy = "*"
+isort = "*"
+pynng = "*"
+black = "*"
+pyserial = "*"
+pyarrow = "*"
+scipy = "*"
+path = "*"
+pathlib = "*"
+module-name = "*"
+ipython = "*"
+duckdb = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"

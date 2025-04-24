@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+msgpack = "*"
+msgpack-numpy = "*"
+isort = "*"
+pynng = "*"
+neurokit2 = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"

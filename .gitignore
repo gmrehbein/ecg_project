@@ -1,0 +1,98 @@
+# py module bytecode
+__pycache__/
+
+# vscodd
+.vscode/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+*.log
+
+# Virtual environments
+venv/
+.env/
+.envrc
+
+# Pipenv & poetry
+Pipfile.lock
+poetry.lock
+
+# Jupyter & IPython
+.ipynb_checkpoints/
+*.ipynb
+
+# ---- PyTest / coverage ----
+.cache/
+coverage.xml
+htmlcov/
+.tox/
+nosetests.xml
+.pytest_cache/
+
+# ---- Editor / OS ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*.bak
+
+# ---- Docker ----
+*.pid
+*.sock
+docker-compose.override.yml
+docker-compose.*.yml
+*.tar
+build/
+*.log
+
+# ---- Project-specific ----
+dev/device
+ecg_database/
+*.sqlite
+*.db
+*.npy
+*.msgpack
+*.csv
+*.jsonl
+
+# Logs
+*.log
+*.out
+*.err
+*.pid
+*.tmp
+
+# ---- Ignore backup / temporary files ----
+*.tmp
+*~
+# ---- Flask / Werkzeug ----
+instance/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.pid
+
+# Flask cache or session files (if using filesystem sessions)
+flask_session/
+*.session
+
+# Compiled templates (if caching or using flask-caching)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Flask testing outputs
+*.test.db
+
+# macOS AppleDouble resource fork files
+._*
+
