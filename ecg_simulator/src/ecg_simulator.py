@@ -24,7 +24,6 @@ from pathlib import Path
 
 import neurokit2 as nk
 import numpy as np
-
 from ecg_config.settings import SERIAL_DEVICE_PATH
 
 
@@ -112,12 +111,15 @@ def create_virtual_serial_port():
 
         cmd = [
             "socat",
-            "-d", "-d",
+            "-d",
+            "-d",
             "pty,raw,echo=0",
             "pty,raw,echo=0",
         ]
 
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
 
         # Parse PTY device paths from socat output
         slave1, slave2 = None, None
@@ -133,7 +135,7 @@ def create_virtual_serial_port():
         if not slave1 or not slave2:
             raise RuntimeError("Failed to create virtual serial ports with socat.")
 
-        logging.info(f"Created virtual serial ports: {slave1} <-> {slave2}")
+        logging.info("Created virtual serial ports: %s <-> %s", slave1, slave2)
         return slave1, slave2
 
     else:
@@ -194,19 +196,28 @@ def main():
     parser = argparse.ArgumentParser(
         description="Simulate ECG stream on a virtual serial port."
     )
-    parser.add_argument("--log-level", type=str, default="INFO",
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-                        help="Set the logging level")
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level",
+    )
     parser.add_argument("--fs", type=int, default=100, help="Sampling rate in Hz")
     parser.add_argument("--duration", type=int, default=60, help="Duration in seconds")
-    parser.add_argument("--loop", action="store_true", default=True, help="Loop the signal endlessly")
-    parser.add_argument("--noise", type=float, default=0.05, help="Powerline noise amplitude (mV)")
-    parser.add_argument("--motion", type=float, default=0.1, help="Motion artifact amplitude (mV)")
+    parser.add_argument(
+        "--loop", action="store_true", default=True, help="Loop the signal endlessly"
+    )
+    parser.add_argument(
+        "--noise", type=float, default=0.05, help="Powerline noise amplitude (mV)"
+    )
+    parser.add_argument(
+        "--motion", type=float, default=0.1, help="Motion artifact amplitude (mV)"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="[%(levelname)s] %(message)s"
+        level=getattr(logging, args.log_level), format="[%(levelname)s] %(message)s"
     )
 
     # Create virtual serial device (prefer socat, fallback to PTY)
