@@ -13,6 +13,8 @@ Endpoints:
 """
 
 import json
+import os
+import signal
 import threading
 import time
 import logging
@@ -104,14 +106,10 @@ def stream_data():
 def main():
     """
     Main entrypoint for the ECG visualization server.
-
-    Initializes the ECG processor (for filtered data) and ECG logger (for raw data),
-    then starts the Flask application to serve real-time ECG visualization.
     """
     logging.basicConfig(level=logging.INFO)
     app.logger.info("Starting ECG Visualization")
 
-    # Start ECG logger (raw data to Parquet)
     app.ecg_logger = ECGLogger()
     app._logger_stop_event = threading.Event()
     app._logger_thread = threading.Thread(
@@ -121,7 +119,6 @@ def main():
         )
     app._logger_thread.start()
 
-    # Start ECG reader (filtered data to GUI)
     app.ecg_reader = ECGReader()
     app._reader_stop_event = threading.Event()
     app._reader_thread = threading.Thread(
@@ -131,23 +128,26 @@ def main():
         )
     app._reader_thread.start()
 
-    def shutdown():
+    def shutdown(*args):
         app.logger.info("Shutting down Flask app...")
 
-        # gracefully shutdown the reader thread
         app.ecg_reader.stop(app._reader_stop_event)
         app._reader_thread.join(timeout=2.0)
 
-        # gracefully shutdownthe logger thread
         app.ecg_logger.stop(app._logger_stop_event)
         app._logger_thread.join(timeout=2.0)
 
+        # Exit cleanly
+        os._exit(0)
+
+    # Catch signals properly
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
     try:
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
-    except KeyboardInterrupt:
-        app.logger.info("KeyboardInterrupt caught, shutting down...")
-        shutdown()
-    finally:
+    except Exception as e:
+        app.logger.error(f"Flask server error: {e}")
         shutdown()
 
 
