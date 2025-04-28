@@ -1,6 +1,6 @@
 import numpy as np
-from scipy.signal import (butter, find_peaks, iirnotch, sosfilt, sosfilt_zi,
-                          tf2sos)
+from scipy.signal import butter, find_peaks, iirnotch, sosfilt, sosfilt_zi, tf2sos
+
 
 class FilterEngine:
     """
@@ -35,7 +35,10 @@ class FilterEngine:
 
         # --- Bandpass SOS ---
         self.sos_band = butter(
-            N=2, Wn=[bandpass[0] / nyq, bandpass[1] / nyq], btype="bandpass", output="sos"
+            N=2,
+            Wn=[bandpass[0] / nyq, bandpass[1] / nyq],
+            btype="bandpass",
+            output="sos",
         )
         self.zi_band = [sosfilt_zi(self.sos_band) for _ in range(3)]  # 3 channels
 
