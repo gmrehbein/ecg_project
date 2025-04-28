@@ -25,17 +25,17 @@ Supported topics and lead sets:
 
 from __future__ import annotations
 
-import os
 import json
-import uuid
 import logging
+import os
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 
 import pandas as pd
+from ecg_config.settings import ECG_DATABASE_DIR, HOST_GID, HOST_UID
 
-from ecg_config.settings import ECG_DATABASE_DIR, HOST_UID, HOST_GID
 from socket_stream import ecg_socket_stream
 
 logger = logging.getLogger(__name__)
@@ -46,21 +46,25 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
+
 def chown_if_needed(path: str) -> None:
     """Change ownership of the given file or directory to HOST_UID:HOST_GID if set."""
     try:
         if HOST_UID >= 0 and HOST_GID >= 0:
             os.chown(path, HOST_UID, HOST_GID)
-    except Exception as e:
-        logger.warning(f"Failed to chown {path}: {e}")
+    except OSError as e:
+        logger.warning("Failed to chown %s: %s", path, e)
+
 
 def generate_patient_id() -> str:
     """Generate a synthetic patient identifier using a truncated UUID."""
     return f"patient_{uuid.uuid4().hex[:8]}"
 
+
 def generate_session_id() -> str:
     """Generate a unique session identifier using the current UTC timestamp."""
     return datetime.now(timezone.utc).strftime("session_%Y%m%dT%H%M%S")
+
 
 def write_metadata_json(
     patient_id: str,
@@ -68,7 +72,7 @@ def write_metadata_json(
     log_dir: str,
     leads: list[str],
     sampling_rate: int = 100,
-    schema_version: str = "1.0.0"
+    schema_version: str = "1.0.0",
 ) -> None:
     """Write session metadata including lead configuration, patient and session IDs to JSON."""
     meta = {
@@ -77,12 +81,13 @@ def write_metadata_json(
         "created": datetime.now(timezone.utc).isoformat(),
         "sampling_rate (hz)": sampling_rate,
         "leads": leads,
-        "schema_version": schema_version
+        "schema_version": schema_version,
     }
     meta_path = os.path.join(log_dir, "session.meta.json")
-    with open(meta_path, "w") as f:
+    with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     chown_if_needed(meta_path)
+
 
 def append_to_manifest(
     root_log_dir: str,
@@ -90,10 +95,10 @@ def append_to_manifest(
     session_id: str,
     topic: str,
     file_count: int,
-    timestamp: str
+    timestamp: str,
 ) -> None:
     """Append an entry for the completed session to a global manifest index in index.json."""
-    logger.info(f"append_to_manifest called with root_log_dir={root_log_dir}")
+    logger.info("append_to_manifest called with root_log_dir=%s", root_log_dir)
     index_path = os.path.join(root_log_dir, "index.json")
     entry = {
         "patient": patient_id,
@@ -101,19 +106,19 @@ def append_to_manifest(
         "topic": topic,
         "files": file_count,
         "started": timestamp,
-        "path": os.path.join(root_log_dir, patient_id, session_id)
+        "path": os.path.join(root_log_dir, patient_id, session_id),
     }
 
     try:
         if os.path.exists(index_path):
-            with open(index_path, "r") as f:
+            with open(index_path, "r", encoding="utf-8") as f:
                 index = json.load(f)
         else:
             index = []
 
         index.append(entry)
 
-        with open(index_path, "w") as f:
+        with open(index_path, "w", encoding="utf-8") as f:
             json.dump(index, f, indent=2)
 
         chown_if_needed(index_path)
@@ -121,13 +126,14 @@ def append_to_manifest(
     except Exception as e:
         logger.error("Failed to update manifest index: %s", e)
 
+
 class ECGLogger:
     def __init__(
         self,
         topic: bytes = b"ecg.raw",
         root_log_dir: str = ECG_DATABASE_DIR,
         batch_size: int = 6000,
-        patient_id: str | None = None
+        patient_id: str | None = None,
     ) -> None:
         """Initialize ECGLogger with session metadata and prepare output directory."""
         self.running: bool = False
@@ -143,29 +149,29 @@ class ECGLogger:
         os.makedirs(self.log_dir, exist_ok=True)
         chown_if_needed(self.log_dir)
 
-        self._file_index: int = 0 # for file naming
+        self._file_index: int = 0  # for file naming
         self._files_written: int = 0  # for actual successful writes
 
         self.leads = {
             b"ecg.raw": ["RA", "LA", "LL"],
-            b"ecg.filtered": ["I", "II", "III", "aVR", "aVL", "aVF"]
+            b"ecg.filtered": ["I", "II", "III", "aVR", "aVL", "aVF"],
         }.get(self.topic, ["unknown"])
 
         write_metadata_json(
-            self.patient_id,
-            self.session_id,
-            self.log_dir,
-            leads=self.leads
+            self.patient_id, self.session_id, self.log_dir, leads=self.leads
         )
 
         self._buffer: list[dict] = []
 
-    def start(self, stop_event: threading.Event | None = None, timeout: float | None = None) -> None:
+    def start(
+        self, stop_event: threading.Event | None = None, timeout: float | None = None
+    ) -> None:
         """Start ECG data logging, optionally stop after a timeout or when stop_event is set."""
         self.running = True
         logger.info("ECGLogger is running for %s/%s", self.patient_id, self.session_id)
 
         if timeout:
+
             def timeout_thread():
                 logger.info("Timeout of %.1f seconds started", timeout)
                 time.sleep(timeout)
@@ -196,7 +202,7 @@ class ECGLogger:
             self.session_id,
             topic=self.topic.decode(),
             file_count=self._files_written,
-            timestamp=self.session_timestamp
+            timestamp=self.session_timestamp,
         )
 
     def _log_data_loop(self, stop_event: threading.Event | None = None) -> None:
@@ -221,23 +227,18 @@ class ECGLogger:
                     self._write_batch(buffer)
                     buffer.clear()
 
-            except Exception:
-                logger.exception("Error while processing ECG data")
+            except (KeyError, TypeError, ValueError) as e:
+                logger.exception("Error while processing ECG data: %s", e)
 
     def _write_batch(self, batch: list[dict]) -> None:
         """Write a batch of ECG records to a compressed Parquet file."""
         df = pd.DataFrame.from_records(batch)
         filename = os.path.join(
-            self.log_dir,
-            f"{self.patient_id}_{self._file_index:04d}.parquet"
+            self.log_dir, f"{self.patient_id}_{self._file_index:04d}.parquet"
         )
 
-        df.to_parquet(
-            filename,
-            compression="snappy",
-            engine="pyarrow"
-        )
+        df.to_parquet(filename, compression="snappy", engine="pyarrow")
         chown_if_needed(filename)
-        self._files_written += 1 # Increment the number of files written
+        self._files_written += 1  # Increment the number of files written
         logger.info("Wrote %d samples to parquet file: %s", len(df), filename)
-        self._file_index += 1 # Increment the file index for the next write
+        self._file_index += 1  # Increment the file index for the next write
