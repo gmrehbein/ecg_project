@@ -13,15 +13,14 @@ Endpoints:
 """
 
 import json
-import os
+import logging
 import signal
+import sys
 import threading
 import time
-import logging
 
 import flask
 import flask_cors
-
 
 # local imports
 from ecg_logger import ECGLogger
@@ -30,6 +29,7 @@ from ecg_reader import ECGReader
 # Flask app
 app = flask.Flask(__name__)
 flask_cors.CORS(app)  # Enable CORS for all routes
+
 
 def format_ecg_json(data: dict) -> dict:
     """
@@ -44,10 +44,7 @@ def format_ecg_json(data: dict) -> dict:
     if not data or "timestamp" not in data or "leads" not in data:
         return {}
 
-    result = {
-        "timestamp": data["timestamp"],
-        "leads": data["leads"]
-    }
+    result = {"timestamp": data["timestamp"], "leads": data["leads"]}
 
     if "bpm" in data:
         result["bpm"] = data["bpm"]
@@ -55,7 +52,7 @@ def format_ecg_json(data: dict) -> dict:
     return result
 
 
-@app.route('/')
+@app.route("/")
 def index():
     """
     Render the main ECG visualization HTML page.
@@ -63,10 +60,10 @@ def index():
     Returns:
         str: Rendered HTML page.
     """
-    return flask.render_template('ecg.html')
+    return flask.render_template("ecg.html")
 
 
-@app.route('/api/data')
+@app.route("/api/data")
 def get_data():
     """
     Return the latest ECG sample in JSON format.
@@ -78,7 +75,7 @@ def get_data():
     return flask.jsonify(format_ecg_json(data))
 
 
-@app.route('/api/stream')
+@app.route("/api/stream")
 def stream_data():
     """
     Stream ECG samples as Server-Sent Events (SSE) to connected clients.
@@ -86,6 +83,7 @@ def stream_data():
     Returns:
         flask.Response: A streaming response with ECG data updates.
     """
+
     def generate():
         while True:
             data = app.ecg_reader.get_current_data()
@@ -100,7 +98,7 @@ def stream_data():
             yield f"data: {json.dumps(json_payload)}\n\n"
             time.sleep(0.05)
 
-    return flask.Response(generate(), mimetype='text/event-stream')
+    return flask.Response(generate(), mimetype="text/event-stream")
 
 
 def main():
@@ -113,22 +111,22 @@ def main():
     app.ecg_logger = ECGLogger()
     app._logger_stop_event = threading.Event()
     app._logger_thread = threading.Thread(
-            target=app.ecg_logger.start,
-            kwargs={"stop_event": app._logger_stop_event},
-            daemon=True,
-        )
+        target=app.ecg_logger.start,
+        kwargs={"stop_event": app._logger_stop_event},
+        daemon=True,
+    )
     app._logger_thread.start()
 
     app.ecg_reader = ECGReader()
     app._reader_stop_event = threading.Event()
     app._reader_thread = threading.Thread(
-            target=app.ecg_reader.start,
-            kwargs={"stop_event": app._reader_stop_event},
-            daemon=True,
-        )
+        target=app.ecg_reader.start,
+        kwargs={"stop_event": app._reader_stop_event},
+        daemon=True,
+    )
     app._reader_thread.start()
 
-    def shutdown(*args):
+    def shutdown(_signum, _frame):
         app.logger.info("Shutting down Flask app...")
 
         app.ecg_reader.stop(app._reader_stop_event)
@@ -138,16 +136,16 @@ def main():
         app._logger_thread.join(timeout=2.0)
 
         # Exit cleanly
-        os._exit(0)
+        sys.exit(0)
 
     # Catch signals properly
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
     try:
-        app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
-    except Exception as e:
-        app.logger.error(f"Flask server error: {e}")
+        app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    except Exception:
+        app.logger.error("Flask server error")
         shutdown()
 
 
