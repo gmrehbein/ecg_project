@@ -25,5 +25,5 @@ COPY ./src /root/src
 WORKDIR /root/src
 
 
-CMD ["python", "signal_processing.py"]
+CMD ["python3", "signal_processing.py"]
 
