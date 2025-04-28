@@ -16,10 +16,10 @@ import msgpack_numpy as m
 import numpy as np
 import pynng
 import serial
-
 from ecg_config.settings import SERIAL_DEVICE_PATH
 
 import filters
+
 
 @dataclass
 class RawSample:
