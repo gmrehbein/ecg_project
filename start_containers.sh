@@ -20,6 +20,64 @@ show_help() {
   echo
 }
 
+# --- REUSABLE FUNCTION TO WAIT FOR DEVICE AND SOCKET READY CONDITIONS ---
+wait_for_condition() {
+  local description="$1"
+  local condition="$2"
+  local timeout="$3"
+
+  echo -e "${CYAN}Waiting for ${description}...${RESET}"
+  local start_time
+  start_time=$(date +%s)
+
+  for ((i=1; i<=timeout; i++)); do
+    if eval "$condition" &>/dev/null; then
+      echo -e "${GREEN}✅ ${description} is ready.${RESET}"
+      return 0
+    fi
+
+    local now
+    now=$(date +%s)
+    local elapsed=$((now - start_time))
+    local percent=$((100 * elapsed / timeout))
+
+    echo -e "${YELLOW}⌛ Waiting for ${description}... (${elapsed}s/${timeout}s, ${percent}%)${RESET}"
+    sleep 1
+  done
+
+  echo -e "${RED}❌ ${description} not ready after ${timeout} seconds.${RESET}"
+
+  # --- Offer user to continue or abort ---
+  read -rp "$(echo -e "${YELLOW}❓ Timeout reached. Continue anyway? (y/n): ${RESET}")" choice
+  case "$choice" in
+    y|Y)
+      echo -e "${YELLOW}⚠️  Continuing despite timeout...${RESET}"
+      return 0
+      ;;
+    *)
+      echo -e "${RED}🛑 Aborting script.${RESET}"
+      exit 1
+      ;;
+  esac
+}
+
+
+# --- FUNCTION TO FIND FREE APP PORT ---
+# This function finds a free port for the app container to use if the default port (5000) is already in use.
+find_free_port() {
+  local base_port=$1
+  local max_port=$((base_port + 20))
+  for ((port=base_port; port<=max_port; port++)); do
+    if ! lsof -i tcp:${port} &>/dev/null; then
+      echo $port
+      return
+    fi
+  done
+  echo -e "${RED}❌ No free ports available in range ${base_port}-${max_port}.${RESET}"
+  exit 1
+}
+
+
 # --- DEFAULT FLAGS ---
 BUILD_IMAGES=false
 BUILD_ONLY=false
@@ -60,6 +118,14 @@ cd "$SCRIPTPATH"
 SIGNAL_PROCESSOR_HOST=176.33.0.2
 SIGNAL_PROCESSOR_PORT=9999
 SIGNAL_PROCESSOR_ADDRESS="tcp://${SIGNAL_PROCESSOR_HOST}:${SIGNAL_PROCESSOR_PORT}"
+DEVICE_WAIT_TIMEOUT=30
+SOCKET_WAIT_TIMEOUT=30
+
+
+# --- FIND FREE PORT FOR APP GUI ---
+APP_PORT=$(find_free_port 5000)
+echo -e "${CYAN}Using port ${APP_PORT} for the ECG GUI.${RESET}"
+
 
 mkdir -p ./ecg_database
 rm -f ./dev/device
@@ -99,24 +165,16 @@ docker run --rm -d \
   -v "${SCRIPTPATH}/dev:/root/dev" \
   test-project/ecg_simulator:1.0.1
 
-# --- WAIT FOR DEVICE SYMLINK ---
-echo -e "${CYAN}Waiting for /root/dev/device to appear...${RESET}"
-for i in {1..10}; do
-  if [ -e "${SCRIPTPATH}/dev/device" ]; then
-    echo -e "${GREEN}✅ Found device: ./dev/device${RESET}"
-    break
-  fi
-  echo -e "${YELLOW}⌛ Waiting... ($i)${RESET}"
-  sleep 1
-done
+# --- WAIT FOR SERIAL DEVICE SYMLINK TO BE CREATED ---
+wait_for_condition \
+"virtual device /root/dev/device inside ecg_simulator container" \
+"docker exec ecg_simulator test -e /root/dev/device" \
+"$DEVICE_WAIT_TIMEOUT"
 
-if [ ! -e "${SCRIPTPATH}/dev/device" ]; then
-  echo -e "${RED}⚠️  Warning: dev/device was not found after 10 seconds.${RESET}"
-fi
 
 # --- START SIGNAL PROCESSOR ---
 echo -e "${CYAN}Starting signal_processing...${RESET}"
-docker run -d \
+docker run --rm -d \
   --name signal_processing \
   --network test-project-network \
   --ip ${SIGNAL_PROCESSOR_HOST} \
@@ -126,29 +184,24 @@ docker run -d \
   test-project/signal_processing:1.0.1
 
 # --- WAIT FOR PUB SOCKET TO BE READY ---
-echo -e "${CYAN}Waiting for signal processor to open pub socket...${RESET}"
-for i in {1..10}; do
-  if timeout 1 bash -c "</dev/tcp/${SIGNAL_PROCESSOR_HOST}/${SIGNAL_PROCESSOR_PORT}" 2>/dev/null; then
-    echo -e "${GREEN}✅ Pub socket is ready at ${SIGNAL_PROCESSOR_ADDRESS}${RESET}"
-    break
-  fi
-  echo -e "${YELLOW}⌛ Socket not ready... ($i)${RESET}"
-  sleep 1
-done
+wait_for_condition \
+  "pub socket at localhost:${SIGNAL_PROCESSOR_PORT} inside signal_processing container" \
+  "docker exec signal_processing bash -c \"timeout 1 bash -c '</dev/tcp/localhost/${SIGNAL_PROCESSOR_PORT}'\"" \
+  "$SOCKET_WAIT_TIMEOUT"
 
 # --- START APP ---
 echo -e "${CYAN}Starting app container...${RESET}"
-docker run -d \
+docker run --rm -d \
   --name app \
   --network test-project-network \
   --ip 176.33.0.3 \
   -v "${SCRIPTPATH}/ecg_config:/root/ecg_config" \
   -v "${SCRIPTPATH}/ecg_database:/root/ecg_database" \
-  -p 5000:5000 \
+  -p ${APP_PORT}:5000 \
   -e SIGNAL_PROCESSOR_ADDRESS=${SIGNAL_PROCESSOR_ADDRESS} \
   test-project/app:1.0.1
 
 # --- DONE ---
 echo -e "${GREEN}🎉 All containers launched.${RESET}"
-echo -e "${CYAN}🌐 ECG GUI available at: http://localhost:5000${RESET}"
+echo -e "${CYAN}🌐 ECG GUI available at: http://localhost:${APP_PORT}${RESET}"
 echo -e "${YELLOW}🛑 To stop all containers, run: ./stop_containers.sh${RESET}"
