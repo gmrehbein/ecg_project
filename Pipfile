@@ -22,6 +22,7 @@ pathlib = "*"
 module-name = "*"
 ipython = "*"
 duckdb = "*"
+polars = "*"
 
 [dev-packages]
 
