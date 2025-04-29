@@ -18,7 +18,6 @@ import random
 import shutil
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -224,18 +223,10 @@ def main():
     writer, reader = create_virtual_serial_port()
     create_symlink_to_device(reader)
 
-    # Launch streaming thread
-    thread = threading.Thread(
-        target=stream_simulated_ecg_to_serial,
-        args=(writer, args.fs, args.duration, args.loop, args.noise, args.motion),
-        daemon=True,
-    )
-    thread.start()
-
-    # Keep main thread alive
     try:
-        while True:
-            time.sleep(1)
+        stream_simulated_ecg_to_serial(
+            writer, args.fs, args.duration, args.loop, args.noise, args.motion
+        )
     except KeyboardInterrupt:
         logging.info("Stopping ECG simulation.")
 
