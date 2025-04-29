@@ -1,0 +1,40 @@
+[MASTER]
+# Add project root to PYTHONPATH so Pylint finds your local modules
+init-hook='import sys; sys.path.append(".")'
+
+# Python files to check
+ignore=venv
+
+[MESSAGES CONTROL]
+# Disable some noisy or non-relevant warnings
+disable=
+#    missing-docstring,
+    invalid-name,
+    too-few-public-methods,
+    import-error,  # disable only if PYTHONPATH trick isn't enough
+    fixme
+
+[TYPECHECK]
+# These can help Pylint better understand dynamic attributes
+ignored-modules=
+    ecg_config.settings
+
+[FORMAT]
+# Code formatting
+max-line-length=100
+
+[DESIGN]
+# Classes and functions allowed without too many methods/args
+max-args=6
+max-attributes=10
+max-locals=15
+max-branches=15
+max-statements=50
+
+[LOGGING]
+# Encourage good logging practices
+logging-modules=logging
+
+[REPORTS]
+# Don't show full reports, just issues
+reports=no
