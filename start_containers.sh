@@ -181,6 +181,7 @@ docker run --rm -d \
   -v "${SCRIPTPATH}/ecg_config:/root/ecg_config" \
   -v "${SCRIPTPATH}/dev:/root/dev" \
   -v /dev/pts:/dev/pts \
+  -e SIGNAL_PROCESSOR_PORT=${SIGNAL_PROCESSOR_PORT} \
   test-project/signal_processing:1.0.1
 
 # --- WAIT FOR PUB SOCKET TO BE READY ---

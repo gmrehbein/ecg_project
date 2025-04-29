@@ -16,9 +16,9 @@ import msgpack_numpy as m
 import numpy as np
 import pynng
 import serial
-from ecg_config.settings import SERIAL_DEVICE_PATH
 
 import filters
+from ecg_config.settings import SERIAL_DEVICE_PATH
 
 
 @dataclass
@@ -88,7 +88,7 @@ def ecg_serial_stream():
     Yields a stream of raw, unfiltered ECG voltages (RA,LA,LL) captured from a serial device
     Data is timestamped upon receipt
     Returns:
-        A RawSample object containing a timestamped np.ndarray of voltages
+        A RawSample object containing a timestamped np.ndarray of millivolt values
     """
     # Setup serial input device
     logger.debug("attempting to open %s", SERIAL_DEVICE_PATH)
@@ -215,10 +215,10 @@ class SignalProcessor:
         filter_engine = filters.FilterEngine()
         hr_monitor = filters.SingleChannelHRMonitor()
 
-        # Open the publishing socket on port 9999
+        # Open the publishing socket on port specified in env var
         # N.B. We don't use the ecg_config.settings.SIGNAL_PROCESSOR_ADDRESS here as
         # it's proven problematic when running in Docker. Just bind to all addresses
-        address = "tcp://0.0.0.0:9999"
+        address = "tcp://0.0.0.0:" + os.environ.get("SIGNAL_PROCESSOR_PORT", "9999")
         logging.debug("opening pub socket on %s", address)
         self._pub.listen(address)
 
