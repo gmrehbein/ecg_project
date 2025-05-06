@@ -70,7 +70,7 @@ def write_metadata_json(
     patient_id: str,
     session_id: str,
     log_dir: str,
-    leads: list[str],
+    channels: list[str],
     sampling_rate: int = 100,
     schema_version: str = "1.0.0",
 ) -> None:
@@ -80,7 +80,7 @@ def write_metadata_json(
         "session": session_id,
         "created": datetime.now(timezone.utc).isoformat(),
         "sampling_rate (hz)": sampling_rate,
-        "leads": leads,
+        "channels": channels,
         "schema_version": schema_version,
     }
     meta_path = os.path.join(log_dir, "session.meta.json")
@@ -152,13 +152,13 @@ class ECGLogger:
         self._file_index: int = 0  # for file naming
         self._files_written: int = 0  # for actual successful writes
 
-        self.leads = {
+        self.channels = {
             b"ecg.raw": ["RA", "LA", "LL"],
             b"ecg.filtered": ["I", "II", "III", "aVR", "aVL", "aVF"],
         }.get(self.topic, ["unknown"])
 
         write_metadata_json(
-            self.patient_id, self.session_id, self.log_dir, leads=self.leads
+            self.patient_id, self.session_id, self.log_dir, channels=self.channels
         )
 
         self._buffer: list[dict] = []
