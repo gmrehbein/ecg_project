@@ -32,11 +32,12 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
-from ecg_config.settings import ECG_DATABASE_DIR, HOST_GID, HOST_UID
-
 from socket_stream import ecg_socket_stream
+
+from ecg_config.settings import ECG_DATABASE_DIR, HOST_GID, HOST_UID
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -45,6 +46,15 @@ if not logger.handlers:
     formatter = logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+SESSION_META_FILENAME = "session.meta.json"
+INDEX_FILENAME = "index.json"
+PARQUET_SUFFIX = ".parquet"
+
+TOPICS_TO_CHANNELS = {
+    b"ecg.raw": ["RA", "LA", "LL"],
+    b"ecg.filtered": ["I", "II", "III", "aVR", "aVL", "aVF"],
+}
 
 
 def chown_if_needed(path: str) -> None:
@@ -83,14 +93,42 @@ def write_metadata_json(
         "channels": channels,
         "schema_version": schema_version,
     }
-    meta_path = os.path.join(log_dir, "session.meta.json")
+
+    meta_path = Path(log_dir) / SESSION_META_FILENAME
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     chown_if_needed(meta_path)
 
 
+def closeout_metadata_json(
+    log_dir: str,
+    started: str,
+) -> None:
+    """Finalize session.meta.json with end time and duration."""
+    meta_path = Path(log_dir) / SESSION_META_FILENAME
+
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+
+        started_dt = datetime.fromisoformat(started)
+        ended_dt = datetime.now(timezone.utc)
+        duration = (ended_dt - started_dt).total_seconds()
+
+        meta["stop_time"] = ended_dt.isoformat()
+        meta["duration_seconds"] = round(duration, 3)
+
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+
+        chown_if_needed(meta_path)
+        logger.info("Updated session.meta.json with end time and duration.")
+    except Exception as e:
+        logger.error("Failed to update session.meta.json: %s", e)
+
+
 def append_to_manifest(
-    root_log_dir: str,
+    root_db_dir: str,
     patient_id: str,
     session_id: str,
     topic: str,
@@ -98,18 +136,30 @@ def append_to_manifest(
     timestamp: str,
 ) -> None:
     """Append an entry for the completed session to a global manifest index in index.json."""
-    logger.info("append_to_manifest called with root_log_dir=%s", root_log_dir)
-    index_path = os.path.join(root_log_dir, "index.json")
-    entry = {
-        "patient": patient_id,
-        "session": session_id,
-        "topic": topic,
-        "files": file_count,
-        "started": timestamp,
-        "path": os.path.join(root_log_dir, patient_id, session_id),
-    }
+    logger.info("append_to_manifest called with root_db_dir=%s", root_db_dir)
+    index_path = os.path.join(root_db_dir, "index.json")
+
+    # Compute relative path to root_db_dir
+    session_dir = Path(root_db_dir) / patient_id / session_id
+    relative_path = session_dir.relative_to(root_db_dir).as_posix()
 
     try:
+        # parse ISO 8601 timestamp
+        started_dt = datetime.fromisoformat(timestamp)
+        ended_dt = datetime.now(timezone.utc)
+        duration = (ended_dt - started_dt).total_seconds()
+
+        entry = {
+            "patient": patient_id,
+            "session": session_id,
+            "topic": topic,
+            "files": file_count,
+            "start_time": timestamp,
+            "stop_time": ended_dt.isoformat(),
+            "duration_seconds": round(duration, 3),
+            "path": relative_path,
+        }
+
         if os.path.exists(index_path):
             with open(index_path, "r", encoding="utf-8") as f:
                 index = json.load(f)
@@ -123,6 +173,7 @@ def append_to_manifest(
 
         chown_if_needed(index_path)
         logger.info("Appended session to index manifest: %s", index_path)
+
     except Exception as e:
         logger.error("Failed to update manifest index: %s", e)
 
@@ -131,7 +182,7 @@ class ECGLogger:
     def __init__(
         self,
         topic: bytes = b"ecg.raw",
-        root_log_dir: str = ECG_DATABASE_DIR,
+        root_db_dir: str = ECG_DATABASE_DIR,
         batch_size: int = 6000,
         patient_id: str | None = None,
     ) -> None:
@@ -139,23 +190,20 @@ class ECGLogger:
         self.running: bool = False
         self.topic: bytes = topic
         self.batch_size: int = batch_size
-        self.root_log_dir = root_log_dir
+        self.root_db_dir = root_db_dir
 
         self.patient_id: str = patient_id if patient_id else generate_patient_id()
         self.session_id: str = generate_session_id()
         self.session_timestamp: str = datetime.now(timezone.utc).isoformat()
 
-        self.log_dir: str = os.path.join(root_log_dir, self.patient_id, self.session_id)
+        self.log_dir: str = os.path.join(root_db_dir, self.patient_id, self.session_id)
         os.makedirs(self.log_dir, exist_ok=True)
         chown_if_needed(self.log_dir)
 
         self._file_index: int = 0  # for file naming
         self._files_written: int = 0  # for actual successful writes
 
-        self.channels = {
-            b"ecg.raw": ["RA", "LA", "LL"],
-            b"ecg.filtered": ["I", "II", "III", "aVR", "aVL", "aVF"],
-        }.get(self.topic, ["unknown"])
+        self.channels = TOPICS_TO_CHANNELS.get(self.topic, ["unknown"])
 
         write_metadata_json(
             self.patient_id, self.session_id, self.log_dir, channels=self.channels
@@ -184,8 +232,6 @@ class ECGLogger:
 
     def stop(self, stop_event: threading.Event | None = None) -> None:
         """Stop logging, flush any buffered data, and record session metadata to index."""
-        logger.info("stop() called")
-
         self.running = False
         if stop_event:
             stop_event.set()
@@ -196,8 +242,10 @@ class ECGLogger:
 
         logger.info("Stopping ECGLogger...")
 
+        closeout_metadata_json(self.log_dir, self.session_timestamp)
+
         append_to_manifest(
-            self.root_log_dir,
+            self.root_db_dir,
             self.patient_id,
             self.session_id,
             topic=self.topic.decode(),
@@ -208,24 +256,20 @@ class ECGLogger:
     def _log_data_loop(self, stop_event: threading.Event | None = None) -> None:
         """Receive ECG data from the socket stream, buffer it, and write to Parquet files."""
         logger.info("Starting socket listener on %s", self.topic.decode())
-        buffer: list[dict] = []
 
         for data in ecg_socket_stream(topic=self.topic):
             if not self.running or (stop_event and stop_event.is_set()):
                 logger.info("Logger shutting down.")
-                if buffer:
-                    self._write_batch(buffer)
-                    buffer.clear()
                 break
 
             try:
                 data["patient"] = self.patient_id
                 data["session"] = self.session_id
-                buffer.append(data)
+                self._buffer.append(data)
 
-                if len(buffer) >= self.batch_size:
-                    self._write_batch(buffer)
-                    buffer.clear()
+                if len(self._buffer) >= self.batch_size:
+                    self._write_batch(self._buffer)
+                    self._buffer.clear()
 
             except (KeyError, TypeError, ValueError) as e:
                 logger.exception("Error while processing ECG data: %s", e)
