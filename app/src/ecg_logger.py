@@ -10,13 +10,13 @@ If logging both raw and filtered topics, each is stored in a subdirectory under 
 Each session is stored in:
     logs/<patient_id>/<session_id>/
         ├── ecg.raw/
-        │   ├── patient_<id>_0000.parquet
+        │   ├── patient_<id>_0000.parquet ← ecg time series data
         │   ├── ...
-        │   └── session.meta.json
+        │   └── ecg.raw.session.meta.json ← metadata for the raw topic capture
         ├── ecg.filtered/
-        │   ├── patient_<id>_0000.parquet
+        │   ├── patient_<id>_0000.parquet ← ecg time series data
         │   ├── ...
-        │   └── session.meta.json
+        │   └── ecg.filtered.session.meta.json  ← metadata for the filtered topic capture
         └── session.meta.json   ← summary metadata for the whole session
 
 A global manifest file at:
@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
+from filelock import FileLock
 import pandas as pd
 from socket_stream import ecg_socket_stream
 
@@ -155,20 +156,28 @@ def finalize_topic_session_metadata(log_dir: Path, topic=bytes) -> None:
 def write_manifest_entries(root_db_dir: Path, entries: list[dict]) -> None:
     """Append a list of manifest entries to the global index.json manifest."""
     index_path = root_db_dir / INDEX_FILENAME
-    if index_path.exists():
-        with index_path.open("r", encoding="utf-8") as f:
-            index = json.load(f)
-    else:
-        index = []
+    lock_path = index_path.with_suffix(".lock")
 
-    index.extend(entries)
+    lock = FileLock(lock_path, timeout=10)  # Wait up to 10 seconds for the lock
 
-    with index_path.open("w", encoding="utf-8") as f:
-        json.dump(index, f, indent=2)
+    try:
+        with lock:
+            if index_path.exists():
+                with index_path.open("r", encoding="utf-8") as f:
+                    index = json.load(f)
+            else:
+                index = []
 
-    chown_if_needed(index_path)
-    logger.info("Wrote %d entries to manifest index: %s", len(entries), index_path)
+            index.extend(entries)
 
+            with index_path.open("w", encoding="utf-8") as f:
+                json.dump(index, f, indent=2)
+
+            chown_if_needed(index_path)
+            logger.info("Wrote %d entries to manifest index: %s", len(entries), index_path)
+
+    except Timeout:
+        logger.error("Timeout acquiring lock for index manifest: %s", lock_path)
 
 def start_all_loggers(
     root_db_dir: str = ECG_DATABASE_DIR,
