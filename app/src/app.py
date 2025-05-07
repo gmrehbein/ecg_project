@@ -23,7 +23,7 @@ import flask
 import flask_cors
 
 # local imports
-from ecg_logger import ECGLogger
+from ecg_logger import start_all_loggers, stop_all_loggers
 from ecg_reader import ECGReader
 
 # Flask app
@@ -108,15 +108,13 @@ def main():
     logging.basicConfig(level=logging.INFO)
     app.logger.info("Starting ECG Visualization")
 
-    app.ecg_logger = ECGLogger()
-    app._logger_stop_event = threading.Event()
-    app._logger_thread = threading.Thread(
-        target=app.ecg_logger.start,
-        kwargs={"stop_event": app._logger_stop_event},
-        daemon=True,
+    # --- Start ECG loggers (raw + filtered) ---
+    app._ecg_logger_stop_event = threading.Event()
+    app._ecg_logger_instances, app._ecg_logger_threads = start_all_loggers(
+        stop_event=app._ecg_logger_stop_event
     )
-    app._logger_thread.start()
 
+    # --- Start ECG reader for GUI (filtered) ---
     app.ecg_reader = ECGReader()
     app._reader_stop_event = threading.Event()
     app._reader_thread = threading.Thread(
@@ -129,11 +127,16 @@ def main():
     def shutdown(_signum, _frame):
         app.logger.info("Shutting down Flask app...")
 
+        # Stop reader
         app.ecg_reader.stop(app._reader_stop_event)
         app._reader_thread.join(timeout=2.0)
 
-        app.ecg_logger.stop(app._logger_stop_event)
-        app._logger_thread.join(timeout=2.0)
+        # Stop all loggers and join their threads
+        stop_all_loggers(
+            app._ecg_logger_instances,
+            app._ecg_logger_threads,
+            stop_event=app._ecg_logger_stop_event,
+        )
 
         # Exit cleanly
         sys.exit(0)
@@ -144,8 +147,8 @@ def main():
 
     try:
         app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
-    except Exception:
-        app.logger.error("Flask server error")
+    except RuntimeError as e:
+        app.logger.error("Flask server error: %s", e, exc_info=True)
         shutdown()
 
 
